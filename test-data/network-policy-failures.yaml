@@ -1,0 +1,99 @@
+# NetworkPolicy Test Cases
+
+test_cases:
+  - id: k8s-network-policy-basic
+    pattern_id: k8s-network-policy-denied
+    description: Basic NetworkPolicy connection denial
+    input_log: |
+      [2024-01-15 10:23:45] Starting deployment of frontend service
+      [2024-01-15 10:23:46] Pulling image: registry.k8s.io/frontend:v1.2.3
+      [2024-01-15 10:23:48] Image pulled successfully
+      [2024-01-15 10:23:49] Starting container
+      [2024-01-15 10:23:50] ERROR: connection refused due to NetworkPolicy pod/frontend-abc123 namespace/production
+      [2024-01-15 10:23:51] ERROR: Unable to connect to backend service
+      [2024-01-15 10:23:52] Retrying connection...
+      [2024-01-15 10:23:53] ERROR: connection refused due to NetworkPolicy pod/frontend-abc123 namespace/production
+      [2024-01-15 10:23:54] Deployment failed
+    expected_matches:
+      - confidence: 95
+        variables:
+          pod_name: frontend-abc123
+          namespace: production
+        solution_id: add-network-policy-rule
+        line_numbers: [5, 8]
+
+  - id: k8s-network-policy-verbose
+    pattern_id: k8s-network-policy-denied
+    description: Verbose NetworkPolicy denial with full context
+    input_log: |
+      I0115 10:23:45.123456   1 client.go:360] Starting connection to backend service
+      I0115 10:23:45.234567   1 round_trippers.go:454] GET https://backend-service.production.svc.cluster.local:8080/health
+      I0115 10:23:45.345678   1 round_trippers.go:460] Request Headers:
+      I0115 10:23:45.345679   1 round_trippers.go:463]     Accept: application/json
+      E0115 10:23:45.456789   1 reflector.go:138] NetworkPolicies.networking.k8s.io "allow-frontend" denied connection from frontend-deployment-7b9c5d4f6-xvz2p to backend-service
+      E0115 10:23:45.456790   1 controller.go:232] Error syncing pod: NetworkPolicy blocking traffic
+      W0115 10:23:45.567890   1 warnings.go:80] Connection refused by NetworkPolicy
+    expected_matches:
+      - confidence: 90
+        variables:
+          source: frontend-deployment-7b9c5d4f6-xvz2p
+          destination: backend-service
+        solution_id: add-network-policy-rule
+
+  - id: k8s-network-policy-egress
+    pattern_id: k8s-network-policy-denied
+    description: Egress NetworkPolicy blocking outbound traffic
+    input_log: |
+      time="2024-01-15T10:23:45Z" level=info msg="Attempting to fetch configuration from external service"
+      time="2024-01-15T10:23:45Z" level=debug msg="Connecting to https://config.example.com/api/v1/settings"
+      time="2024-01-15T10:23:46Z" level=error msg="Error: NetworkPolicy blocking egress traffic from pod worker-7f9d8b6c5-abc123"
+      time="2024-01-15T10:23:46Z" level=error msg="Cannot establish connection to external endpoints"
+      time="2024-01-15T10:23:46Z" level=fatal msg="Failed to initialize configuration"
+    expected_matches:
+      - confidence: 85
+        variables:
+          pod_name: worker-7f9d8b6c5-abc123
+        solution_id: add-network-policy-rule
+
+  - id: k8s-network-policy-false-positive-1
+    pattern_id: k8s-network-policy-denied
+    description: Should NOT match - generic connection refused
+    input_log: |
+      [2024-01-15 10:23:45] ERROR: connection refused
+      [2024-01-15 10:23:46] ERROR: Unable to connect to database on port 5432
+      [2024-01-15 10:23:47] ERROR: java.net.ConnectException: Connection refused (Connection refused)
+      [2024-01-15 10:23:48] Caused by: java.net.ConnectException: Connection refused
+    expected_matches: []
+
+  - id: k8s-network-policy-false-positive-2
+    pattern_id: k8s-network-policy-denied
+    description: Should NOT match - network timeout
+    input_log: |
+      2024/01/15 10:23:45 [error] 1234#1234: *5678 connect() failed (110: Connection timed out) while connecting to upstream
+      2024/01/15 10:23:46 [error] 1234#1234: *5679 upstream timed out (110: Connection timed out)
+      2024/01/15 10:23:47 [warn] Network latency detected, increasing timeout values
+    expected_matches: []
+
+  - id: k8s-network-policy-complex
+    pattern_id: k8s-network-policy-denied
+    description: Complex multi-line log with NetworkPolicy errors mixed with other issues
+    input_log: |
+      2024-01-15T10:23:45.123Z [INFO] Starting application initialization
+      2024-01-15T10:23:45.234Z [INFO] Loading configuration from environment
+      2024-01-15T10:23:45.345Z [WARN] DATABASE_URL not set, using default
+      2024-01-15T10:23:45.456Z [INFO] Attempting to connect to Redis cache
+      2024-01-15T10:23:45.567Z [ERROR] Redis connection failed: ECONNREFUSED 127.0.0.1:6379
+      2024-01-15T10:23:45.678Z [INFO] Continuing without cache
+      2024-01-15T10:23:45.789Z [INFO] Initializing service mesh connections
+      2024-01-15T10:23:45.890Z [ERROR] connection refused due to NetworkPolicy pod/api-gateway-5d9f8b7c6-qwerty namespace/default
+      2024-01-15T10:23:45.901Z [ERROR] Failed to establish connection to user-service
+      2024-01-15T10:23:46.012Z [INFO] Retrying with exponential backoff
+      2024-01-15T10:23:47.123Z [ERROR] connection refused due to NetworkPolicy pod/api-gateway-5d9f8b7c6-qwerty namespace/default
+      2024-01-15T10:23:47.234Z [FATAL] Unable to initialize required services
+    expected_matches:
+      - confidence: 95
+        variables:
+          pod_name: api-gateway-5d9f8b7c6-qwerty
+          namespace: default
+        solution_id: add-network-policy-rule
+        line_numbers: [8, 11]

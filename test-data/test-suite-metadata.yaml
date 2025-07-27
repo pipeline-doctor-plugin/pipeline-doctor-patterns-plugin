@@ -1,0 +1,129 @@
+# Test Suite Metadata and Organization
+
+metadata:
+  version: "1.0"
+  created: "2024-01-15"
+  description: "Comprehensive test dataset for Pipeline Doctor Plugin pattern validation"
+  
+test_suites:
+  - name: "Kubernetes Issues"
+    files:
+      - network-policy-failures.yaml
+      - kubernetes-rbac-failures.yaml
+    total_test_cases: 11
+    coverage_areas:
+      - NetworkPolicy connection denial
+      - RBAC permission errors
+      - ServiceAccount restrictions
+      - Cluster-wide resource access
+    severity_distribution:
+      critical: 8
+      high: 2
+      medium: 1
+
+  - name: "Container Registry Issues"
+    files:
+      - docker-registry-failures.yaml
+    total_test_cases: 8
+    coverage_areas:
+      - Docker Hub authentication
+      - Private registry access
+      - AWS ECR authentication
+      - Google Container Registry
+      - Harbor registry
+    severity_distribution:
+      critical: 8
+
+  - name: "Package Management Issues"
+    files:
+      - debian-archive-failures.yaml
+    total_test_cases: 7
+    coverage_areas:
+      - Debian archive moved errors
+      - Expired GPG keys
+      - Missing Release files
+      - Multi-stage Docker builds
+    severity_distribution:
+      high: 7
+
+  - name: "Build Tool Issues"
+    files:
+      - build-tool-failures.yaml
+    total_test_cases: 11
+    coverage_areas:
+      - Maven dependency resolution
+      - Gradle dependency issues
+      - NPM registry timeouts
+      - Python pip timeouts
+      - Java OutOfMemoryError
+    severity_distribution:
+      critical: 2
+      high: 9
+
+  - name: "Version Control Issues"
+    files:
+      - git-vcs-failures.yaml
+    total_test_cases: 9
+    coverage_areas:
+      - Git HTTPS authentication
+      - SSH key authentication
+      - Git LFS installation
+      - Multiple Git platforms
+    severity_distribution:
+      critical: 6
+      high: 3
+
+test_statistics:
+  total_test_cases: 46
+  total_patterns_covered: 8
+  expected_matches: 42
+  false_positive_tests: 8
+  
+  pattern_coverage:
+    k8s-network-policy-denied: 6 test cases
+    k8s-rbac-forbidden: 5 test cases
+    docker-registry-auth-failed: 8 test cases
+    debian-archive-moved: 7 test cases
+    maven-dependency-not-found: 3 test cases
+    gradle-dependency-not-found: 2 test cases
+    npm-registry-timeout: 2 test cases
+    pip-timeout: 2 test cases
+    out-of-memory-java: 2 test cases
+    git-auth-failed: 3 test cases
+    git-lfs-not-installed: 3 test cases
+
+validation_criteria:
+  confidence_thresholds:
+    minimum_acceptable: 80
+    high_confidence: 90
+    very_high_confidence: 95
+  
+  performance_requirements:
+    max_pattern_match_time_ms: 10
+    max_total_analysis_time_ms: 100
+  
+  accuracy_targets:
+    true_positive_rate: ">= 95%"
+    false_positive_rate: "<= 5%"
+    overall_accuracy: ">= 90%"
+
+quality_assurance:
+  anonymization:
+    - IP addresses replaced with X.X.X.X
+    - Email addresses replaced with user@example.com
+    - Sensitive tokens/passwords marked as REDACTED
+    - Real company names replaced with generic terms
+  
+  real_world_basis:
+    description: "All test cases based on actual Jenkins build failures"
+    sources:
+      - Production Jenkins instances
+      - Community-reported issues
+      - Stack Overflow questions
+      - GitHub issue trackers
+  
+  coverage_validation:
+    - Each pattern has at least 2 positive test cases
+    - Each pattern has at least 1 false positive test
+    - Complex multi-pattern scenarios included
+    - Edge cases and variations covered

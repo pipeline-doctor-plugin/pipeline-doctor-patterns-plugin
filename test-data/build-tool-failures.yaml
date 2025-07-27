@@ -1,0 +1,238 @@
+# Build Tool Test Cases (Maven, Gradle, NPM, etc.)
+
+test_cases:
+  # Maven Test Cases
+  - id: maven-dependency-not-found-basic
+    pattern_id: maven-dependency-not-found
+    description: Basic Maven dependency resolution failure
+    input_log: |
+      [INFO] Scanning for projects...
+      [INFO] 
+      [INFO] -----------------------< com.example:myapp >-----------------------
+      [INFO] Building myapp 1.0-SNAPSHOT
+      [INFO] --------------------------------[ jar ]---------------------------------
+      [INFO] 
+      [INFO] --- maven-dependency-plugin:3.1.2:resolve (default-cli) @ myapp ---
+      [INFO] 
+      [ERROR] Failed to execute goal on project myapp: Could not resolve dependencies for project com.example:myapp:jar:1.0-SNAPSHOT: Could not find artifact com.internal:common-utils:jar:2.3.0 in central (https://repo.maven.apache.org/maven2) -> [Help 1]
+      [ERROR] 
+      [ERROR] To see the full stack trace of the errors, re-run Maven with the -e switch.
+      [ERROR] Re-run Maven using the -X switch to enable full debug logging.
+    expected_matches:
+      - confidence: 95
+        variables:
+          group_id: com.internal
+          artifact_id: common-utils
+          version: 2.3.0
+          repository: central
+        solution_id: check-maven-repository
+
+  - id: maven-dependency-collection-failed
+    pattern_id: maven-dependency-not-found
+    description: Maven dependency collection failure
+    input_log: |
+      [Pipeline] sh
+      + mvn clean install
+      [INFO] Scanning for projects...
+      [INFO] Building microservice-api 0.1.0
+      [WARNING] The POM for org.company:security-lib:jar:1.5.0 is missing, no dependency information available
+      [ERROR] Failed to collect dependencies at org.company:security-lib:jar:1.5.0: Failed to read artifact descriptor for org.company:security-lib:jar:1.5.0: Could not find artifact org.company:security-lib:pom:1.5.0 in company-nexus (https://nexus.company.com/repository/maven-public)
+      [ERROR] 
+      [ERROR] For more information about the errors and possible solutions, please read the following articles:
+      [ERROR] [Help 1] http://cwiki.apache.org/confluence/display/MAVEN/DependencyResolutionException
+      [Pipeline] }
+      ERROR: script returned exit code 1
+    expected_matches:
+      - confidence: 90
+        variables:
+          group_id: org.company
+          artifact_id: security-lib
+          version: 1.5.0
+        solution_id: check-maven-repository
+
+  - id: maven-cached-failure
+    pattern_id: maven-dependency-not-found
+    description: Maven cached failure for dependency
+    input_log: |
+      Downloading from central: https://repo.maven.apache.org/maven2/io/example/analytics-sdk/3.2.1/analytics-sdk-3.2.1.pom
+      [WARNING] The POM for io.example:analytics-sdk:jar:3.2.1 is missing, no dependency information available
+      Downloading from central: https://repo.maven.apache.org/maven2/io/example/analytics-sdk/3.2.1/analytics-sdk-3.2.1.jar
+      [ERROR] Failed to execute goal on project webapp: Could not resolve dependencies for project com.mycompany:webapp:war:1.0.0: Failure to find io.example:analytics-sdk:jar:3.2.1 in https://repo.maven.apache.org/maven2 was cached in the local repository, resolution will not be reattempted until the update interval of central has elapsed or updates are forced -> [Help 1]
+    expected_matches:
+      - confidence: 85
+        variables:
+          group_id: io.example
+          artifact_id: analytics-sdk
+          version: 3.2.1
+          repository: https://repo.maven.apache.org/maven2
+        solution_id: check-maven-repository
+
+  # Gradle Test Cases
+  - id: gradle-dependency-not-found-basic
+    pattern_id: gradle-dependency-not-found
+    description: Basic Gradle dependency resolution failure
+    input_log: |
+      > Task :app:dependencies FAILED
+      
+      FAILURE: Build failed with an exception.
+      
+      * What went wrong:
+      Could not resolve all files for configuration ':app:implementation'.
+      > Could not find com.company.libs:shared-components:1.2.3.
+        Searched in the following locations:
+          - https://repo.maven.apache.org/maven2/com/company/libs/shared-components/1.2.3/shared-components-1.2.3.pom
+          - https://jcenter.bintray.com/com/company/libs/shared-components/1.2.3/shared-components-1.2.3.pom
+        Required by:
+            project :app
+    expected_matches:
+      - confidence: 95
+        variables:
+          group_id: com.company.libs
+          artifact_id: shared-components
+          version: 1.2.3
+        solution_id: check-gradle-repository
+
+  - id: gradle-plugin-not-found
+    pattern_id: gradle-dependency-not-found
+    description: Gradle plugin resolution failure
+    input_log: |
+      FAILURE: Build failed with an exception.
+      
+      * Where:
+      Build file '/home/jenkins/workspace/mobile-app/build.gradle' line: 3
+      
+      * What went wrong:
+      Plugin [id: 'com.company.custom-plugin', version: '2.0.0'] was not found in any of the following sources:
+      
+      - Gradle Core Plugins (plugin is not in 'org.gradle' namespace)
+      - Plugin Repositories (could not resolve plugin artifact 'com.company.custom-plugin:com.company.custom-plugin.gradle.plugin:2.0.0')
+        Searched in the following repositories:
+          Gradle Central Plugin Repository
+          MavenCentral
+    expected_matches:
+      - confidence: 90
+        variables:
+          group_id: com.company.custom-plugin
+          artifact_id: com.company.custom-plugin.gradle.plugin
+          version: 2.0.0
+        solution_id: check-gradle-repository
+
+  # NPM Test Cases
+  - id: npm-timeout-basic
+    pattern_id: npm-registry-timeout
+    description: Basic NPM registry timeout
+    input_log: |
+      npm WARN old lockfile 
+      npm WARN old lockfile The package-lock.json file was created with an old version of npm,
+      npm WARN old lockfile so supplemental metadata must be fetched from the registry.
+      npm WARN old lockfile 
+      npm WARN old lockfile This is a one-time fix-up, please be patient...
+      npm WARN old lockfile 
+      npm ERR! code ETIMEDOUT
+      npm ERR! syscall connect
+      npm ERR! errno ETIMEDOUT
+      npm ERR! network request to https://registry.npmjs.org/@angular/animations failed, reason: connect ETIMEDOUT 104.16.16.35:443
+      npm ERR! network This is a problem related to network connectivity.
+      npm ERR! network In most cases you are behind a proxy or have bad network settings.
+    expected_matches:
+      - confidence: 95
+        solution_id: increase-npm-timeout
+
+  - id: npm-timeout-with-package
+    pattern_id: npm-registry-timeout
+    description: NPM timeout with specific package
+    input_log: |
+      [2024-01-15 10:23:45] Running npm install
+      [2024-01-15 10:23:45] npm notice 
+      [2024-01-15 10:23:45] npm notice New patch version of npm available! 8.19.3 -> 8.19.4
+      [2024-01-15 10:23:45] npm notice Run npm install -g npm@8.19.4 to update!
+      [2024-01-15 10:23:45] npm notice 
+      [2024-01-15 10:24:45] npm ERR! code ETIMEDOUT
+      [2024-01-15 10:24:45] npm ERR! network timeout at: https://registry.npmjs.org/react-scripts
+      [2024-01-15 10:24:45] npm ERR! network This is a problem related to network connectivity.
+      [2024-01-15 10:24:45] npm ERR! network In most cases you are behind a proxy or have bad network settings.
+      [2024-01-15 10:24:45] npm ERR! network 
+      [2024-01-15 10:24:45] npm ERR! network If you are behind a proxy, please make sure that the
+      [2024-01-15 10:24:45] npm ERR! network 'proxy' config is set properly.
+    expected_matches:
+      - confidence: 90
+        variables:
+          package_name: react-scripts
+        solution_id: increase-npm-timeout
+
+  # Python pip Test Cases
+  - id: pip-timeout-basic
+    pattern_id: pip-timeout
+    description: Basic pip timeout error
+    input_log: |
+      Collecting django==3.2.0
+        Downloading Django-3.2.0-py3-none-any.whl (7.9 MB)
+           |████████                        | 2.0 MB 32 kB/s eta 0:03:02ERROR: Exception:
+      Traceback (most recent call last):
+        File "/usr/local/lib/python3.9/site-packages/pip/_vendor/urllib3/response.py", line 438, in _error_catcher
+          yield
+        File "/usr/local/lib/python3.9/site-packages/pip/_vendor/urllib3/response.py", line 519, in read
+          data = self._fp.read(amt) if not fp_closed else b""
+        File "/usr/local/lib/python3.9/http/client.py", line 462, in read
+          n = self.readinto(b)
+      socket.timeout: The read operation timed out
+      During handling of the above exception, another exception occurred:
+      pip._vendor.urllib3.exceptions.ReadTimeoutError: HTTPSConnectionPool(host='files.pythonhosted.org', port=443): Read timed out.
+    expected_matches:
+      - confidence: 95
+        solution_id: increase-pip-timeout
+
+  - id: pip-connection-timeout-pypi
+    pattern_id: pip-timeout
+    description: pip connection timeout to PyPI
+    input_log: |
+      Building wheels for collected packages: numpy, scipy
+        Building wheel for numpy (setup.py): started
+        Building wheel for numpy (setup.py): finished with status 'done'
+        Created wheel for numpy: filename=numpy-1.21.0-cp39-cp39-linux_x86_64.whl
+        Building wheel for scipy (setup.py): started
+      ERROR: Could not fetch URL https://pypi.org/simple/scipy/: connection error: HTTPSConnectionPool(host='pypi.org', port=443): Max retries exceeded with url: /simple/scipy/ (Caused by ReadTimeoutError("HTTPSConnectionPool(host='pypi.org', port=443): Read timed out. (read timeout=15)")) - skipping
+      WARNING: Retrying (Retry(total=4, connect=None, read=None, redirect=None, status=None)) after connection broken by 'ReadTimeoutError("HTTPSConnectionPool(host='pypi.org', port=443): Read timed out. (read timeout=15)")': /simple/scipy/
+    expected_matches:
+      - confidence: 90
+        solution_id: increase-pip-timeout
+
+  # Java Out of Memory
+  - id: java-heap-oom-basic
+    pattern_id: out-of-memory-java
+    description: Basic Java heap space error
+    input_log: |
+      [INFO] --- maven-surefire-plugin:2.22.2:test (default-test) @ large-app ---
+      [INFO] 
+      [INFO] -------------------------------------------------------
+      [INFO]  T E S T S
+      [INFO] -------------------------------------------------------
+      [INFO] Running com.example.IntegrationTest
+      Exception in thread "main" java.lang.OutOfMemoryError: Java heap space
+          at java.base/java.util.Arrays.copyOf(Arrays.java:3511)
+          at java.base/java.util.ArrayList.grow(ArrayList.java:237)
+          at java.base/java.util.ArrayList.ensureCapacityInternal(ArrayList.java:211)
+          at java.base/java.util.ArrayList.add(ArrayList.java:458)
+          at com.example.DataProcessor.processLargeFile(DataProcessor.java:123)
+          at com.example.IntegrationTest.testLargeDataProcessing(IntegrationTest.java:45)
+    expected_matches:
+      - confidence: 100
+        solution_id: increase-heap-size
+
+  - id: java-gc-overhead-oom
+    pattern_id: out-of-memory-java
+    description: GC overhead limit exceeded
+    input_log: |
+      10:23:45.123 [pool-2-thread-1] INFO  c.e.BatchProcessor - Processing batch 1234 of 5000
+      10:23:46.234 [pool-2-thread-2] INFO  c.e.BatchProcessor - Processing batch 1235 of 5000
+      10:23:47.345 [pool-2-thread-3] ERROR c.e.BatchProcessor - Fatal error in batch processing
+      java.lang.OutOfMemoryError: GC overhead limit exceeded
+          at java.base/java.util.HashMap.newNode(HashMap.java:1799)
+          at java.base/java.util.HashMap.putVal(HashMap.java:630)
+          at java.base/java.util.HashMap.put(HashMap.java:611)
+          at com.example.CacheManager.store(CacheManager.java:89)
+      10:23:47.456 [main] ERROR c.e.Application - Terminating due to java.lang.OutOfMemoryError
+      Process finished with exit code 1
+    expected_matches:
+      - confidence: 100
+        solution_id: increase-heap-size

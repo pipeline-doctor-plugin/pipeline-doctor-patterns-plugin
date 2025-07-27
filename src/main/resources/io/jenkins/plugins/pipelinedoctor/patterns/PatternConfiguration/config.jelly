@@ -1,0 +1,68 @@
+<?jelly escape-by-default='true'?>
+<j:jelly xmlns:j="jelly:core" xmlns:st="jelly:stapler" xmlns:d="jelly:define" xmlns:l="/lib/layout" xmlns:t="/lib/hudson" xmlns:f="/lib/form">
+    
+    <f:section title="Pattern-based Diagnostics Configuration">
+        
+        <f:entry title="Enable Built-in Patterns" field="enableBuiltinPatterns"
+                 description="Enable the built-in pattern library for common build issues">
+            <f:checkbox />
+        </f:entry>
+        
+        <f:entry title="Custom Patterns Path" field="customPatternsPath"
+                 description="Optional path to custom pattern YAML file (leave empty to use only built-in patterns)">
+            <f:textbox />
+        </f:entry>
+        
+        <f:entry title="Minimum Confidence Threshold" field="minimumConfidenceThreshold"
+                 description="Only show diagnostic results with confidence above this threshold (0-100)">
+            <f:number clazz="setting-input" min="0" max="100" step="1" />
+        </f:entry>
+        
+        <f:entry title="Maximum Matches per Pattern" field="maxMatchesPerPattern"
+                 description="Limit the number of matches per pattern to avoid overwhelming results">
+            <f:number clazz="setting-input" min="1" max="100" step="1" />
+        </f:entry>
+        
+        <f:entry title="Disabled Categories" field="disabledCategoriesString"
+                 description="Comma-separated list of pattern categories to disable (e.g., kubernetes, docker, build-tool)">
+            <f:textbox />
+        </f:entry>
+        
+        <f:entry title="Enable Debug Logging" field="enableDebugLogging"
+                 description="Enable detailed logging for pattern matching (useful for troubleshooting)">
+            <f:checkbox />
+        </f:entry>
+        
+        <f:block>
+            <div style="margin-top: 20px; padding: 15px; background-color: #f0f8ff; border: 1px solid #b0d4f1; border-radius: 4px;">
+                <h4 style="margin-top: 0;">Pattern Categories</h4>
+                <p>The pattern matcher supports the following categories:</p>
+                <ul>
+                    <li><strong>kubernetes:</strong> Kubernetes and container orchestration issues</li>
+                    <li><strong>docker:</strong> Docker registry and container issues</li>
+                    <li><strong>package-manager:</strong> NPM, Maven, Gradle, pip dependency issues</li>
+                    <li><strong>build-tool:</strong> Maven, Gradle, NPM build failures</li>
+                    <li><strong>vcs:</strong> Git, SVN, and version control issues</li>
+                    <li><strong>test:</strong> Test execution failures (JUnit, etc.)</li>
+                    <li><strong>performance:</strong> Memory, timeout, and performance issues</li>
+                    <li><strong>network:</strong> Network connectivity and proxy issues</li>
+                    <li><strong>security:</strong> Authentication and authorization failures</li>
+                </ul>
+            </div>
+        </f:block>
+        
+        <f:block>
+            <div style="margin-top: 15px; padding: 15px; background-color: #fff3cd; border: 1px solid #ffeaa7; border-radius: 4px;">
+                <h4 style="margin-top: 0;">Performance Tips</h4>
+                <ul>
+                    <li><strong>Confidence Threshold:</strong> Set to 80+ to reduce false positives</li>
+                    <li><strong>Disabled Categories:</strong> Disable categories not relevant to your builds</li>
+                    <li><strong>Max Matches:</strong> Keep low (5-10) for better performance on large logs</li>
+                    <li><strong>Custom Patterns:</strong> Only add patterns for issues specific to your environment</li>
+                </ul>
+            </div>
+        </f:block>
+        
+    </f:section>
+    
+</j:jelly>

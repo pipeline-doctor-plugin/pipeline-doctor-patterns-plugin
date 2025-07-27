@@ -1,0 +1,139 @@
+# Debian Archive Repository Test Cases
+
+test_cases:
+  - id: debian-archive-404-basic
+    pattern_id: debian-archive-moved
+    description: Basic Debian archive 404 error
+    input_log: |
+      Step 3/10 : RUN apt-get update && apt-get install -y curl wget
+       ---> Running in abc123def456
+      Get:1 http://security.debian.org/debian-security stretch/updates InRelease [53.0 kB]
+      Ign:2 http://deb.debian.org/debian stretch InRelease
+      Ign:3 http://deb.debian.org/debian stretch-updates InRelease
+      Ign:4 http://deb.debian.org/debian stretch Release
+      Ign:5 http://deb.debian.org/debian stretch-updates Release
+      Ign:6 http://deb.debian.org/debian stretch/main amd64 Packages
+      Err:6 http://deb.debian.org/debian stretch/main amd64 Packages
+        404  Not Found
+      Ign:7 http://deb.debian.org/debian stretch/contrib amd64 Packages
+      Err:7 http://deb.debian.org/debian stretch/contrib amd64 Packages
+        404  Not Found
+      Reading package lists...
+      W: Failed to fetch http://deb.debian.org/debian/dists/stretch/main/binary-amd64/Packages  404  Not Found
+      W: Failed to fetch http://deb.debian.org/debian/dists/stretch/contrib/binary-amd64/Packages  404  Not Found
+      E: Some index files failed to download. They have been ignored, or old ones used instead.
+    expected_matches:
+      - confidence: 90
+        solution_id: update-to-archive-repo
+
+  - id: debian-archive-expired-keys
+    pattern_id: debian-archive-moved
+    description: Debian repository with expired GPG keys
+    input_log: |
+      #5 [2/6] RUN apt-get update
+      #5 0.234 Get:1 http://security.debian.org/debian-security buster/updates InRelease [34.8 kB]
+      #5 0.456 Get:2 http://deb.debian.org/debian buster InRelease [122 kB]
+      #5 0.678 Get:3 http://deb.debian.org/debian buster-updates InRelease [56.6 kB]
+      #5 0.890 Err:1 http://security.debian.org/debian-security buster/updates InRelease
+      #5 0.891   The following signatures were invalid: EXPKEYSIG 112695A0E562B32A Debian Security Archive Automatic Signing Key (10/buster)
+      #5 0.892 Err:2 http://deb.debian.org/debian buster InRelease
+      #5 0.893   The following signatures were invalid: EXPKEYSIG 648ACFD622F3D138 Debian Archive Automatic Signing Key (10/buster)
+      #5 0.894 Err:3 http://deb.debian.org/debian buster-updates InRelease
+      #5 0.895   The following signatures were invalid: EXPKEYSIG 0E98404D386FA1D9 Debian Archive Automatic Signing Key (11/bullseye)
+      #5 0.896 Reading package lists...
+      #5 1.234 W: GPG error: http://security.debian.org/debian-security buster/updates InRelease: The following signatures were invalid: EXPKEYSIG 112695A0E562B32A
+      #5 1.235 E: The repository 'http://security.debian.org/debian-security buster/updates InRelease' is not signed.
+    expected_matches:
+      - confidence: 85
+        variables:
+          key_id: 112695A0E562B32A
+        solution_id: update-to-archive-repo
+
+  - id: debian-archive-release-file-missing
+    pattern_id: debian-archive-moved
+    description: Debian repository missing Release file
+    input_log: |
+      [2024-01-15 10:23:45] Building Docker image
+      [2024-01-15 10:23:46] Step 2/8 : RUN apt-get update && apt-get install -y python3-pip
+      [2024-01-15 10:23:47]  ---> Running in 789def012345
+      [2024-01-15 10:23:48] Ign:1 http://deb.debian.org/debian jessie InRelease
+      [2024-01-15 10:23:48] Ign:2 http://deb.debian.org/debian jessie-updates InRelease
+      [2024-01-15 10:23:49] Err:3 http://deb.debian.org/debian jessie Release
+      [2024-01-15 10:23:49]   404  Not Found
+      [2024-01-15 10:23:50] Err:4 http://deb.debian.org/debian jessie-updates Release
+      [2024-01-15 10:23:50]   404  Not Found
+      [2024-01-15 10:23:51] Reading package lists...
+      [2024-01-15 10:23:52] E: The repository 'http://deb.debian.org/debian jessie Release' does not have a Release file.
+      [2024-01-15 10:23:52] E: The repository 'http://deb.debian.org/debian jessie-updates Release' does not have a Release file.
+      [2024-01-15 10:23:53] The command '/bin/sh -c apt-get update && apt-get install -y python3-pip' returned a non-zero code: 100
+    expected_matches:
+      - confidence: 95
+        solution_id: update-to-archive-repo
+
+  - id: debian-archive-complex-dockerfile
+    pattern_id: debian-archive-moved
+    description: Multi-stage Dockerfile with Debian archive issues
+    input_log: |
+      Sending build context to Docker daemon  123.4MB
+      Step 1/15 : FROM debian:stretch-slim AS builder
+       ---> abc123def456
+      Step 2/15 : RUN apt-get update && apt-get install -y build-essential git
+       ---> Running in 567890abcdef
+      Get:1 http://deb.debian.org/debian stretch InRelease [44.8 kB]
+      Get:2 http://security.debian.org/debian-security stretch/updates InRelease [53.0 kB]
+      Err:1 http://deb.debian.org/debian stretch InRelease
+        The following signatures were invalid: EXPKEYSIG 7638D0442B90D010 Debian Archive Automatic Signing Key (8/jessie)
+      Get:3 http://deb.debian.org/debian stretch-updates InRelease [93.6 kB]
+      Ign:4 http://deb.debian.org/debian stretch/main amd64 Packages
+      Err:4 http://deb.debian.org/debian stretch/main amd64 Packages
+        404  Not Found [IP: 151.101.86.132 80]
+      Reading package lists...
+      W: GPG error: http://deb.debian.org/debian stretch InRelease: The following signatures were invalid: EXPKEYSIG 7638D0442B90D010
+      W: The repository 'http://deb.debian.org/debian stretch InRelease' is not signed.
+      W: Failed to fetch http://deb.debian.org/debian/dists/stretch/main/binary-amd64/Packages  404  Not Found
+      E: Some index files failed to download. They have been ignored, or old ones used instead.
+      The command '/bin/sh -c apt-get update && apt-get install -y build-essential git' returned a non-zero code: 100
+      ERROR: Service 'app' failed to build: Build failed
+    expected_matches:
+      - confidence: 90
+        solution_id: update-to-archive-repo
+
+  - id: debian-archive-false-positive-1
+    pattern_id: debian-archive-moved
+    description: Should NOT match - successful apt update
+    input_log: |
+      Step 3/5 : RUN apt-get update && apt-get install -y nginx
+       ---> Running in abc123
+      Get:1 http://deb.debian.org/debian bullseye InRelease [116 kB]
+      Get:2 http://deb.debian.org/debian-security bullseye-security InRelease [48.4 kB]
+      Get:3 http://deb.debian.org/debian bullseye-updates InRelease [44.1 kB]
+      Reading package lists...
+      Building dependency tree...
+      The following NEW packages will be installed:
+        nginx nginx-common nginx-core
+      0 upgraded, 3 newly installed, 0 to remove and 0 not upgraded.
+    expected_matches: []
+
+  - id: debian-archive-false-positive-2
+    pattern_id: debian-archive-moved
+    description: Should NOT match - non-Debian 404 error
+    input_log: |
+      npm ERR! 404 Not Found - GET https://registry.npmjs.org/@mycompany/private-package
+      npm ERR! 404
+      npm ERR! 404 '@mycompany/private-package@^1.0.0' is not in the npm registry.
+      npm ERR! 404 You should bug the author to publish it
+    expected_matches: []
+
+  - id: debian-archive-ubuntu-variant
+    pattern_id: debian-archive-moved
+    description: Similar issue but with Ubuntu (should not match Debian pattern)
+    input_log: |
+      Step 2/5 : RUN apt-get update
+       ---> Running in def456
+      Err:1 http://archive.ubuntu.com/ubuntu xenial InRelease
+        404  Not Found
+      Err:2 http://archive.ubuntu.com/ubuntu xenial-updates InRelease
+        404  Not Found
+      W: Failed to fetch http://archive.ubuntu.com/ubuntu/dists/xenial/InRelease  404  Not Found
+      E: Some index files failed to download.
+    expected_matches: []

@@ -1,0 +1,18 @@
+<?jelly escape-by-default='true'?>
+<div>
+    This plugin provides pattern-based diagnostic analysis for Jenkins builds. 
+    It analyzes build logs using predefined patterns to identify common issues and suggest solutions.
+    <p>
+        Features:
+        <ul>
+            <li>Kubernetes and container issue detection</li>
+            <li>Package manager problem identification</li>
+            <li>Build tool error analysis</li>
+            <li>Git/VCS authentication issues</li>
+            <li>Performance problem detection</li>
+        </ul>
+    </p>
+    <p>
+        This plugin extends the Pipeline Doctor Core Plugin with pattern-matching capabilities.
+    </p>
+</div>

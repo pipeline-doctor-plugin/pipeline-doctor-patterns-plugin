@@ -1,0 +1,164 @@
+# Docker Registry Authentication Test Cases
+
+test_cases:
+  - id: docker-auth-basic
+    pattern_id: docker-registry-auth-failed
+    description: Basic Docker Hub authentication failure
+    input_log: |
+      Step 1/5 : FROM node:18-alpine
+      Step 2/5 : WORKDIR /app
+      Step 3/5 : COPY package*.json ./
+      Step 4/5 : RUN npm ci
+      Step 5/5 : COPY . .
+      Successfully built a1b2c3d4e5f6
+      Successfully tagged myapp:latest
+      The push refers to repository [docker.io/mycompany/myapp]
+      a1b2c3d4: Preparing
+      b2c3d4e5: Preparing
+      unauthorized: authentication required
+    expected_matches:
+      - confidence: 95
+        variables:
+          registry_url: docker.io
+          image_name: mycompany/myapp
+        solution_id: configure-docker-credentials
+
+  - id: docker-auth-private-registry
+    pattern_id: docker-registry-auth-failed
+    description: Private registry authentication with full URL
+    input_log: |
+      [2024-01-15 10:23:45] Pulling image from private registry
+      [2024-01-15 10:23:45] $ docker pull registry.company.com:5000/backend/api-service:v2.1.0
+      [2024-01-15 10:23:46] Error response from daemon: Get https://registry.company.com:5000/v2/: unauthorized: authentication required for https://registry.company.com:5000/backend/api-service:v2.1.0
+      [2024-01-15 10:23:46] Build step 'Execute shell' marked build as failure
+    expected_matches:
+      - confidence: 95
+        variables:
+          registry_url: registry.company.com:5000
+          image_name: backend/api-service:v2.1.0
+        solution_id: configure-docker-credentials
+
+  - id: docker-auth-ecr
+    pattern_id: docker-registry-auth-failed
+    description: AWS ECR authentication failure
+    input_log: |
+      Pulling docker image 123456789012.dkr.ecr.us-east-1.amazonaws.com/my-service:latest ...
+      WARNING: Failed to pull image with policy "always": Error response from daemon: Get https://123456789012.dkr.ecr.us-east-1.amazonaws.com/v2/my-service/manifests/latest: unauthorized
+      ERROR: Job failed: failed to pull image "123456789012.dkr.ecr.us-east-1.amazonaws.com/my-service:latest" with specified policies [always]: Error response from daemon: Get https://123456789012.dkr.ecr.us-east-1.amazonaws.com/v2/my-service/manifests/latest: unauthorized
+    expected_matches:
+      - confidence: 85
+        variables:
+          registry_url: 123456789012.dkr.ecr.us-east-1.amazonaws.com
+        solution_id: configure-docker-credentials
+
+  - id: docker-auth-pull-denied
+    pattern_id: docker-registry-auth-failed
+    description: Pull access denied format
+    input_log: |
+      $ docker-compose up -d
+      Creating network "myapp_default" with the default driver
+      Pulling db (postgres:14)...
+      14: Pulling from library/postgres
+      Digest: sha256:1234567890abcdef
+      Status: Downloaded newer image for postgres:14
+      Pulling app (mycompany/webapp:prod)...
+      ERROR: pull access denied for mycompany/webapp, repository does not exist or may require 'docker login': denied: requested access to the resource is denied
+    expected_matches:
+      - confidence: 90
+        variables:
+          full_image: mycompany/webapp
+        solution_id: configure-docker-credentials
+
+  - id: docker-auth-gcr
+    pattern_id: docker-registry-auth-failed
+    description: Google Container Registry authentication
+    input_log: |
+      [Pipeline] stage
+      [Pipeline] { (Build and Push)
+      [Pipeline] sh
+      + docker build -t gcr.io/my-project-id/frontend:${BUILD_NUMBER} .
+      Sending build context to Docker daemon  15.36kB
+      Successfully built abc123def456
+      Successfully tagged gcr.io/my-project-id/frontend:123
+      + docker push gcr.io/my-project-id/frontend:123
+      The push refers to repository [gcr.io/my-project-id/frontend]
+      unauthorized: authentication required for gcr.io/my-project-id/frontend:123
+      [Pipeline] }
+      [Pipeline] // stage
+    expected_matches:
+      - confidence: 95
+        variables:
+          registry_url: gcr.io
+          image_name: my-project-id/frontend:123
+        solution_id: configure-docker-credentials
+
+  - id: docker-auth-false-positive-1
+    pattern_id: docker-registry-auth-failed
+    description: Should NOT match - successful authentication
+    input_log: |
+      Login Succeeded
+      Pulling repository myregistry.com/myimage
+      Pull complete
+      Status: Downloaded newer image for myregistry.com/myimage:latest
+    expected_matches: []
+
+  - id: docker-auth-false-positive-2
+    pattern_id: docker-registry-auth-failed
+    description: Should NOT match - different unauthorized error
+    input_log: |
+      Error: Unauthorized access to API endpoint
+      HTTP 401 Unauthorized
+      {"error": "Invalid API key"}
+    expected_matches: []
+
+  - id: docker-auth-complex-pipeline
+    pattern_id: docker-registry-auth-failed
+    description: Complex Jenkins pipeline with Docker auth failure
+    input_log: |
+      [Pipeline] node
+      Running on Jenkins in /var/jenkins_home/workspace/deploy-production
+      [Pipeline] {
+      [Pipeline] stage
+      [Pipeline] { (Checkout)
+      [Pipeline] checkout
+      Cloning the remote Git repository
+      [Pipeline] }
+      [Pipeline] // stage
+      [Pipeline] stage
+      [Pipeline] { (Test)
+      [Pipeline] sh
+      + npm test
+      > myapp@1.0.0 test
+      > jest --coverage
+      PASS  src/app.test.js
+      Test Suites: 5 passed, 5 total
+      Tests:       23 passed, 23 total
+      [Pipeline] }
+      [Pipeline] // stage
+      [Pipeline] stage
+      [Pipeline] { (Build)
+      [Pipeline] sh
+      + docker build -t harbor.company.io/production/web-app:v1.2.3 .
+      Sending build context to Docker daemon  2.048kB
+      Step 1/8 : FROM node:18-alpine
+      Successfully built 789abc123def
+      Successfully tagged harbor.company.io/production/web-app:v1.2.3
+      [Pipeline] }
+      [Pipeline] // stage
+      [Pipeline] stage
+      [Pipeline] { (Push)
+      [Pipeline] sh
+      + docker push harbor.company.io/production/web-app:v1.2.3
+      The push refers to repository [harbor.company.io/production/web-app]
+      Get https://harbor.company.io/v2/: unauthorized: authentication required
+      [Pipeline] }
+      [Pipeline] // stage
+      [Pipeline] }
+      [Pipeline] // node
+      [Pipeline] End of Pipeline
+      ERROR: script returned exit code 1
+    expected_matches:
+      - confidence: 85
+        variables:
+          registry_url: harbor.company.io
+        solution_id: configure-docker-credentials

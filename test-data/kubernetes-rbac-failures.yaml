@@ -1,0 +1,153 @@
+# Kubernetes RBAC Test Cases
+
+test_cases:
+  - id: k8s-rbac-basic-forbidden
+    pattern_id: k8s-rbac-forbidden
+    description: Basic RBAC forbidden error with all details
+    input_log: |
+      [2024-01-15 10:23:45] Deploying application to Kubernetes cluster
+      [2024-01-15 10:23:45] $ kubectl apply -f deployment.yaml
+      Error from server (Forbidden): error when creating "deployment.yaml": deployments.apps is forbidden: User "system:serviceaccount:jenkins:jenkins-deployer" cannot create resource "deployments" in API group "apps" in the namespace "production"
+      [2024-01-15 10:23:46] Deployment failed with exit code 1
+    expected_matches:
+      - confidence: 95
+        variables:
+          user: system:serviceaccount:jenkins:jenkins-deployer
+          verb: create
+          resource: deployments
+          namespace: production
+        solution_id: grant-rbac-permission
+
+  - id: k8s-rbac-configmap-forbidden
+    pattern_id: k8s-rbac-forbidden
+    description: ServiceAccount cannot read ConfigMaps
+    input_log: |
+      time="2024-01-15T10:23:45Z" level=info msg="Starting configuration sync"
+      time="2024-01-15T10:23:45Z" level=debug msg="Fetching ConfigMap app-config from namespace default"
+      time="2024-01-15T10:23:46Z" level=error msg="Failed to get ConfigMap" error="configmaps \"app-config\" is forbidden: User \"system:serviceaccount:default:app-reader\" cannot get resource \"configmaps\" in API group \"\" in the namespace \"default\""
+      time="2024-01-15T10:23:46Z" level=fatal msg="Cannot proceed without configuration"
+    expected_matches:
+      - confidence: 95
+        variables:
+          user: system:serviceaccount:default:app-reader
+          verb: get
+          resource: configmaps
+          namespace: default
+        solution_id: grant-rbac-permission
+
+  - id: k8s-rbac-alternative-format
+    pattern_id: k8s-rbac-forbidden
+    description: Alternative RBAC error format
+    input_log: |
+      I0115 10:23:45.123456       1 request.go:665] Waited for 1.023456s due to client-side throttling, not priority and fairness, request: GET:https://kubernetes.default.svc/api/v1/namespaces/monitoring/pods?labelSelector=app%3Dprometheus
+      E0115 10:23:46.234567       1 reflector.go:138] k8s.io/client-go/informers/factory.go:134: Failed to watch *v1.Pod: failed to list *v1.Pod: pods is forbidden: serviceaccount:monitoring:prometheus-operator cannot list resource "pods" in API group "" at the cluster scope
+      F0115 10:23:46.345678       1 main.go:123] Error setting up pod informer
+    expected_matches:
+      - confidence: 90
+        variables:
+          namespace: monitoring
+          sa_name: prometheus-operator
+          verb: list
+          resource: pods
+        solution_id: grant-rbac-permission
+
+  - id: k8s-rbac-patch-forbidden
+    pattern_id: k8s-rbac-forbidden
+    description: Cannot patch existing resource
+    input_log: |
+      [Pipeline] stage
+      [Pipeline] { (Update Deployment)
+      [Pipeline] container
+      [Pipeline] {
+      [Pipeline] sh
+      + kubectl set image deployment/frontend frontend=myregistry.io/frontend:v2.0.0 -n production
+      Error from server (Forbidden): deployments.apps "frontend" is forbidden: User "system:serviceaccount:ci-cd:jenkins" cannot patch resource "deployments" in API group "apps" in the namespace "production"
+      [Pipeline] }
+      [Pipeline] // container
+      [Pipeline] }
+      [Pipeline] // stage
+    expected_matches:
+      - confidence: 95
+        variables:
+          user: system:serviceaccount:ci-cd:jenkins
+          verb: patch
+          resource: deployments
+          namespace: production
+        solution_id: grant-rbac-permission
+
+  - id: k8s-rbac-clusterrole-forbidden
+    pattern_id: k8s-rbac-forbidden
+    description: Cluster-wide resource access denied
+    input_log: |
+      2024/01/15 10:23:45 [INFO] Attempting to list all namespaces
+      2024/01/15 10:23:45 [DEBUG] GET /api/v1/namespaces
+      2024/01/15 10:23:46 [ERROR] Error from server (Forbidden): namespaces is forbidden: User "system:serviceaccount:monitoring:namespace-watcher" cannot list resource "namespaces" in API group "" at the cluster scope
+      2024/01/15 10:23:46 [ERROR] Failed to initialize namespace watcher
+      2024/01/15 10:23:46 [FATAL] Exiting due to insufficient permissions
+    expected_matches:
+      - confidence: 95
+        variables:
+          user: system:serviceaccount:monitoring:namespace-watcher
+          verb: list
+          resource: namespaces
+          namespace: ""  # cluster scope
+        solution_id: grant-rbac-permission
+
+  - id: k8s-rbac-false-positive-1
+    pattern_id: k8s-rbac-forbidden
+    description: Should NOT match - generic forbidden error
+    input_log: |
+      HTTP/1.1 403 Forbidden
+      Content-Type: application/json
+      {"error": "Access forbidden", "message": "You don't have permission to access this resource"}
+    expected_matches: []
+
+  - id: k8s-rbac-false-positive-2
+    pattern_id: k8s-rbac-forbidden
+    description: Should NOT match - file system permission error
+    input_log: |
+      Error: EACCES: permission denied, open '/etc/config/app.conf'
+      Error: Cannot read configuration file
+      Fatal: Application startup failed
+    expected_matches: []
+
+  - id: k8s-rbac-complex-deployment
+    pattern_id: k8s-rbac-forbidden
+    description: Complex deployment with multiple RBAC errors
+    input_log: |
+      [2024-01-15 10:23:45] Starting deployment process
+      [2024-01-15 10:23:45] Phase 1: Creating namespace
+      [2024-01-15 10:23:45] $ kubectl create namespace feature-branch-123
+      namespace/feature-branch-123 created
+      [2024-01-15 10:23:46] Phase 2: Creating ConfigMaps
+      [2024-01-15 10:23:46] $ kubectl create configmap app-config --from-file=config/ -n feature-branch-123
+      Error from server (Forbidden): configmaps is forbidden: User "system:serviceaccount:jenkins:deployer" cannot create resource "configmaps" in API group "" in the namespace "feature-branch-123"
+      [2024-01-15 10:23:47] Warning: ConfigMap creation failed, continuing...
+      [2024-01-15 10:23:47] Phase 3: Creating Secrets
+      [2024-01-15 10:23:47] $ kubectl create secret generic app-secrets --from-env-file=.env -n feature-branch-123
+      secret/app-secrets created
+      [2024-01-15 10:23:48] Phase 4: Deploying application
+      [2024-01-15 10:23:48] $ kubectl apply -f k8s/deployment.yaml -n feature-branch-123
+      deployment.apps/frontend created
+      service/frontend created
+      [2024-01-15 10:23:49] Phase 5: Creating Ingress
+      [2024-01-15 10:23:49] $ kubectl apply -f k8s/ingress.yaml -n feature-branch-123
+      Error from server (Forbidden): error when creating "k8s/ingress.yaml": ingresses.networking.k8s.io is forbidden: User "system:serviceaccount:jenkins:deployer" cannot create resource "ingresses" in API group "networking.k8s.io" in the namespace "feature-branch-123"
+      [2024-01-15 10:23:50] ERROR: Deployment partially failed
+    expected_matches:
+      - confidence: 95
+        variables:
+          user: system:serviceaccount:jenkins:deployer
+          verb: create
+          resource: configmaps
+          namespace: feature-branch-123
+        solution_id: grant-rbac-permission
+        line_number: 7
+      - confidence: 95
+        variables:
+          user: system:serviceaccount:jenkins:deployer
+          verb: create
+          resource: ingresses
+          namespace: feature-branch-123
+        solution_id: grant-rbac-permission
+        line_number: 16

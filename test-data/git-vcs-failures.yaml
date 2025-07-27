@@ -1,0 +1,197 @@
+# Git and VCS Test Cases
+
+test_cases:
+  - id: git-auth-https-basic
+    pattern_id: git-auth-failed
+    description: Basic HTTPS authentication failure
+    input_log: |
+      [Pipeline] checkout
+      Selected Git installation does not exist. Using Default
+      The recommended git tool is: NONE
+      using credential github-token
+      Cloning the remote Git repository
+      Cloning repository https://github.com/mycompany/private-repo.git
+       > git init /var/jenkins_home/workspace/build-private-app # timeout=10
+      Fetching upstream changes from https://github.com/mycompany/private-repo.git
+       > git --version # timeout=10
+       > git --version # 'git version 2.30.2'
+       > git fetch --tags --force --progress -- https://github.com/mycompany/private-repo.git +refs/heads/*:refs/remotes/origin/* # timeout=10
+      ERROR: Error cloning remote repo 'origin'
+      hudson.plugins.git.GitException: Command "git fetch --tags --force --progress -- https://github.com/mycompany/private-repo.git +refs/heads/*:refs/remotes/origin/*" returned status code 128:
+      stdout: 
+      stderr: remote: Invalid username or password.
+      fatal: Authentication failed for 'https://github.com/mycompany/private-repo.git/'
+    expected_matches:
+      - confidence: 95
+        variables:
+          host: github.com
+          org: mycompany
+          repo: private-repo.git
+        solution_id: configure-git-credentials
+
+  - id: git-auth-ssh-publickey
+    pattern_id: git-auth-failed
+    description: SSH public key authentication failure
+    input_log: |
+      Initialized empty Git repository in /home/runner/work/app/app/.git/
+      [command]/usr/bin/git remote add origin git@gitlab.company.com:backend/api-service.git
+      [command]/usr/bin/git config --local gc.auto 0
+      [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+      [command]/usr/bin/git submodule foreach --recursive git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :
+      [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+      [command]/usr/bin/git submodule foreach --recursive git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :
+      [command]/usr/bin/git -c protocol.version=2 fetch --no-tags --prune --progress --no-recurse-submodules --depth=1 origin +refs/heads/main:refs/remotes/origin/main
+      git@gitlab.company.com: Permission denied (publickey).
+      fatal: Could not read from remote repository.
+      
+      Please make sure you have the correct access rights
+      and the repository exists.
+      Error: Process completed with exit code 128.
+    expected_matches:
+      - confidence: 90
+        variables:
+          host: gitlab.company.com
+        solution_id: configure-git-credentials
+
+  - id: git-auth-bitbucket-https
+    pattern_id: git-auth-failed
+    description: Bitbucket HTTPS authentication failure
+    input_log: |
+      Running on Jenkins in /var/jenkins_home/workspace/deploy-prod
+      [Pipeline] {
+      [Pipeline] stage
+      [Pipeline] { (Checkout)
+      [Pipeline] git
+      The recommended git tool is: NONE
+      using credential bitbucket-app-password
+       > git rev-parse --resolve-git-dir /var/jenkins_home/workspace/deploy-prod/.git # timeout=10
+      Fetching changes from the remote Git repository
+       > git config remote.origin.url https://bitbucket.org/companyteam/backend-services.git # timeout=10
+      Fetching upstream changes from https://bitbucket.org/companyteam/backend-services.git
+       > git --version # timeout=10
+       > git --version # 'git version 2.30.2'
+      using GIT_ASKPASS to set credentials Bitbucket app password
+       > git fetch --tags --force --progress -- https://bitbucket.org/companyteam/backend-services.git +refs/heads/*:refs/remotes/origin/* # timeout=10
+      ERROR: Error fetching remote repo 'origin'
+      hudson.plugins.git.GitException: Failed to fetch from https://bitbucket.org/companyteam/backend-services.git
+      Caused by: hudson.plugins.git.GitException: Command "git fetch --tags --force --progress -- https://bitbucket.org/companyteam/backend-services.git +refs/heads/*:refs/remotes/origin/*" returned status code 128:
+      stdout: 
+      stderr: remote: Invalid credentials
+      fatal: Authentication failed for 'https://bitbucket.org/companyteam/backend-services.git/'
+    expected_matches:
+      - confidence: 95
+        variables:
+          host: bitbucket.org
+          org: companyteam
+          repo: backend-services.git
+        solution_id: configure-git-credentials
+
+  - id: git-lfs-not-installed-basic
+    pattern_id: git-lfs-not-installed
+    description: Git LFS command not found
+    input_log: |
+      [2024-01-15 10:23:45] Cloning repository with large files
+      [2024-01-15 10:23:45] $ git clone https://github.com/company/assets-repo.git
+      Cloning into 'assets-repo'...
+      remote: Enumerating objects: 1523, done.
+      remote: Counting objects: 100% (1523/1523), done.
+      remote: Compressing objects: 100% (892/892), done.
+      remote: Total 1523 (delta 456), reused 1234 (delta 234)
+      Receiving objects: 100% (1523/1523), 234.56 MiB | 12.34 MiB/s, done.
+      Resolving deltas: 100% (456/456), done.
+      git-lfs filter-process: git-lfs: command not found
+      fatal: the remote end hung up unexpectedly
+      warning: Clone succeeded, but checkout failed.
+      You can inspect what was checked out with 'git status'
+      and retry the checkout with 'git checkout -f HEAD'
+    expected_matches:
+      - confidence: 95
+        solution_id: install-git-lfs
+
+  - id: git-lfs-not-installed-jenkins
+    pattern_id: git-lfs-not-installed
+    description: Git LFS not installed in Jenkins environment
+    input_log: |
+      Started by user admin
+      Running as SYSTEM
+      Building in workspace /var/jenkins_home/workspace/media-assets
+      The recommended git tool is: NONE
+      using credential github-deploy-key
+      Cloning the remote Git repository
+      Cloning repository git@github.com:company/media-assets.git
+       > git init /var/jenkins_home/workspace/media-assets # timeout=10
+      Fetching upstream changes from git@github.com:company/media-assets.git
+       > git --version # timeout=10
+       > git --version # 'git version 2.30.2'
+      using GIT_SSH to set credentials GitHub deploy key
+       > git fetch --tags --force --progress -- git@github.com:company/media-assets.git +refs/heads/*:refs/remotes/origin/* # timeout=10
+       > git config remote.origin.url git@github.com:company/media-assets.git # timeout=10
+       > git config --add remote.origin.fetch +refs/heads/*:refs/remotes/origin/* # timeout=10
+       > git config remote.origin.url git@github.com:company/media-assets.git # timeout=10
+      Fetching upstream changes from git@github.com:company/media-assets.git
+      using GIT_SSH to set credentials GitHub deploy key
+       > git fetch --tags --force --progress -- git@github.com:company/media-assets.git +refs/heads/*:refs/remotes/origin/* # timeout=10
+       > git rev-parse refs/remotes/origin/main^{commit} # timeout=10
+      Checking out Revision abc123def456 (refs/remotes/origin/main)
+       > git config core.sparsecheckout # timeout=10
+       > git checkout -f abc123def456 # timeout=10
+      /usr/lib/git-core/git-lfs: 1: /usr/lib/git-core/git-lfs: git-lfs: not found
+      error: external filter '/usr/lib/git-core/git-lfs filter-process' failed -1
+      error: external filter '/usr/lib/git-core/git-lfs filter-process' failed
+      fatal: assets/video/intro.mp4: smudge filter lfs failed
+      hudson.plugins.git.GitException: Command "git checkout -f abc123def456" returned status code 128
+    expected_matches:
+      - confidence: 95
+        solution_id: install-git-lfs
+
+  - id: git-lfs-pointer-files
+    pattern_id: git-lfs-not-installed
+    description: Git LFS pointer files detected
+    input_log: |
+      [Pipeline] sh
+      + git clone https://github.com/company/ml-models.git
+      Cloning into 'ml-models'...
+      + cd ml-models
+      + ls -la models/
+      total 24
+      drwxr-xr-x 2 jenkins jenkins 4096 Jan 15 10:23 .
+      drwxr-xr-x 5 jenkins jenkins 4096 Jan 15 10:23 ..
+      -rw-r--r-- 1 jenkins jenkins  134 Jan 15 10:23 bert-base.onnx
+      -rw-r--r-- 1 jenkins jenkins  134 Jan 15 10:23 resnet50.pb
+      + cat models/bert-base.onnx
+      version https://git-lfs.github.com/spec/v1
+      oid sha256:1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef
+      size 438912472
+      + echo 'ERROR: This repository is configured for Git LFS but \'git-lfs\' is not installed'
+      ERROR: This repository is configured for Git LFS but 'git-lfs' is not installed
+      + echo 'Encountered 2 file(s) that should have been pointers, but weren\'t'
+      Encountered 2 file(s) that should have been pointers, but weren't
+    expected_matches:
+      - confidence: 90
+        solution_id: install-git-lfs
+      - confidence: 85
+        variables:
+          file_count: 2
+        solution_id: install-git-lfs
+
+  - id: git-auth-false-positive-1
+    pattern_id: git-auth-failed
+    description: Should NOT match - successful clone
+    input_log: |
+      Cloning into 'project'...
+      remote: Enumerating objects: 123, done.
+      remote: Counting objects: 100% (123/123), done.
+      remote: Compressing objects: 100% (89/89), done.
+      remote: Total 123 (delta 34), reused 123 (delta 34)
+      Receiving objects: 100% (123/123), 45.67 KiB | 2.34 MiB/s, done.
+      Resolving deltas: 100% (34/34), done.
+    expected_matches: []
+
+  - id: git-auth-false-positive-2
+    pattern_id: git-auth-failed
+    description: Should NOT match - non-git authentication error
+    input_log: |
+      Error: Authentication failed
+      Status: 401 Unauthorized
+      Message: Invalid API key provided
+    expected_matches: []

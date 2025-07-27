@@ -1,0 +1,604 @@
+# Built-in Pattern Library for Pipeline Doctor Plugin
+
+patterns:
+  # Kubernetes & Container Issues
+  - id: k8s-network-policy-denied
+    category: kubernetes
+    name: NetworkPolicy Connection Denied
+    description: Connection blocked by Kubernetes NetworkPolicy rules
+    severity: CRITICAL
+    tags: [kubernetes, network, security]
+    matchers:
+      - regex: 'connection refused.*NetworkPolicy.*pod/(\S+).*namespace/(\S+)'
+        confidence: 95
+        captures: [pod_name, namespace]
+      - regex: 'NetworkPolicies\.networking\.k8s\.io.*denied.*from (\S+) to (\S+)'
+        confidence: 90
+        captures: [source, destination]
+      - regex: 'Error.*NetworkPolicy.*blocking.*traffic.*pod\s+(\S+)'
+        confidence: 85
+        captures: [pod_name]
+    solutions:
+      - id: add-network-policy-rule
+        title: Add NetworkPolicy Rule
+        priority: 100
+        steps:
+          - "Check existing NetworkPolicy: kubectl get networkpolicy -n ${namespace}"
+          - "Edit NetworkPolicy to allow traffic from ${source} to ${destination}"
+          - "Apply the updated NetworkPolicy"
+        examples:
+          networkpolicy: |
+            apiVersion: networking.k8s.io/v1
+            kind: NetworkPolicy
+            metadata:
+              name: allow-${source}
+              namespace: ${namespace}
+            spec:
+              podSelector:
+                matchLabels:
+                  app: ${destination}
+              ingress:
+              - from:
+                - podSelector:
+                    matchLabels:
+                      app: ${source}
+
+  - id: k8s-rbac-forbidden
+    category: kubernetes
+    name: Kubernetes RBAC Permission Denied
+    description: ServiceAccount lacks required RBAC permissions
+    severity: CRITICAL
+    tags: [kubernetes, rbac, security]
+    matchers:
+      - regex: 'Error from server \(Forbidden\).*User "([^"]+)".*cannot (\w+) resource "([^"]+)".*namespace "([^"]+)"'
+        confidence: 95
+        captures: [user, verb, resource, namespace]
+      - regex: 'forbidden:.*serviceaccount:([^:]+):([^\s]+).*cannot (\w+)\s+resource\s+"([^"]+)"'
+        confidence: 90
+        captures: [namespace, sa_name, verb, resource]
+    solutions:
+      - id: grant-rbac-permission
+        title: Grant RBAC Permission
+        priority: 100
+        steps:
+          - "Create Role for ${verb} on ${resource} in namespace ${namespace}"
+          - "Create RoleBinding for ServiceAccount ${sa_name}"
+          - "kubectl apply -f role.yaml && kubectl apply -f rolebinding.yaml"
+        examples:
+          role: |
+            apiVersion: rbac.authorization.k8s.io/v1
+            kind: Role
+            metadata:
+              name: ${resource}-${verb}
+              namespace: ${namespace}
+            rules:
+            - apiGroups: [""]
+              resources: ["${resource}"]
+              verbs: ["${verb}"]
+          rolebinding: |
+            apiVersion: rbac.authorization.k8s.io/v1
+            kind: RoleBinding
+            metadata:
+              name: ${sa_name}-${resource}-${verb}
+              namespace: ${namespace}
+            roleRef:
+              apiGroup: rbac.authorization.k8s.io
+              kind: Role
+              name: ${resource}-${verb}
+            subjects:
+            - kind: ServiceAccount
+              name: ${sa_name}
+              namespace: ${namespace}
+
+  # Docker Registry Issues
+  - id: docker-registry-auth-failed
+    category: docker
+    name: Docker Registry Authentication Failed
+    description: Failed to authenticate with Docker registry
+    severity: CRITICAL
+    tags: [docker, registry, authentication]
+    matchers:
+      - regex: 'unauthorized: authentication required.*(?:for\s+)?(?:https?://)?([^/\s]+)/([^:\s]+)'
+        confidence: 95
+        captures: [registry_url, image_name]
+      - regex: 'pull access denied for ([^,]+).*repository does not exist or may require.*docker login'
+        confidence: 90
+        captures: [full_image]
+      - regex: 'Error response from daemon.*Get.*([^:]+).*unauthorized'
+        confidence: 85
+        captures: [registry_url]
+    solutions:
+      - id: configure-docker-credentials
+        title: Configure Docker Registry Credentials
+        priority: 100
+        steps:
+          - "Create Docker credentials in Jenkins: Manage Jenkins > Credentials"
+          - "Add to pipeline: withDockerRegistry([credentialsId: 'docker-creds', url: 'https://${registry_url}'])"
+          - "Or use: docker login ${registry_url}"
+        examples:
+          jenkinsfile: |
+            pipeline {
+              agent any
+              stages {
+                stage('Pull Image') {
+                  steps {
+                    script {
+                      docker.withRegistry('https://${registry_url}', 'docker-credentials-id') {
+                        docker.image('${image_name}').pull()
+                      }
+                    }
+                  }
+                }
+              }
+            }
+
+  # Package Manager Issues
+  - id: debian-archive-moved
+    category: package-manager
+    name: Debian Package Archive Moved
+    description: Debian packages moved to archive repository
+    severity: HIGH
+    tags: [debian, apt, linux]
+    matchers:
+      - regex: 'Failed to fetch.*deb\.debian\.org.*404\s+Not Found'
+        confidence: 90
+      - regex: 'The following signatures were invalid.*EXPKEYSIG\s+(\S+)'
+        confidence: 85
+        captures: [key_id]
+      - regex: 'E: The repository.*debian.*Release.*no longer has a Release file'
+        confidence: 95
+    solutions:
+      - id: update-to-archive-repo
+        title: Update to Debian Archive Repository
+        priority: 100
+        steps:
+          - "Replace deb.debian.org with archive.debian.org"
+          - "sed -i 's|deb.debian.org|archive.debian.org|g' /etc/apt/sources.list"
+          - "sed -i 's|security.debian.org|archive.debian.org|g' /etc/apt/sources.list"
+          - "apt-get update"
+        examples:
+          dockerfile: |
+            RUN sed -i 's|deb.debian.org|archive.debian.org|g' /etc/apt/sources.list && \
+                sed -i 's|security.debian.org|archive.debian.org|g' /etc/apt/sources.list && \
+                apt-get update
+
+  - id: npm-registry-timeout
+    category: package-manager
+    name: NPM Registry Timeout
+    description: NPM package installation timed out
+    severity: HIGH
+    tags: [npm, nodejs, timeout]
+    matchers:
+      - regex: 'npm ERR!.*ETIMEDOUT.*registry\.npmjs\.org'
+        confidence: 95
+      - regex: 'npm ERR!.*network timeout at:.*https://registry\.npmjs\.org/([^/]+)'
+        confidence: 90
+        captures: [package_name]
+      - regex: 'npm ERR!.*request to.*failed.*connect ETIMEDOUT'
+        confidence: 85
+    solutions:
+      - id: increase-npm-timeout
+        title: Increase NPM Timeout
+        priority: 100
+        steps:
+          - "Increase timeout: npm config set fetch-timeout 300000"
+          - "Retry with increased timeout: npm install"
+          - "Consider using npm cache: npm ci"
+      - id: use-npm-proxy
+        title: Use NPM Proxy/Mirror
+        priority: 90
+        steps:
+          - "Configure npm proxy: npm config set registry https://registry.npmmirror.com"
+          - "Or use corporate proxy if available"
+          - "Clear cache and retry: npm cache clean --force"
+
+  - id: pip-timeout
+    category: package-manager
+    name: Python pip Timeout
+    description: pip package installation timed out
+    severity: HIGH
+    tags: [python, pip, timeout]
+    matchers:
+      - regex: 'ReadTimeoutError.*pypi\.org.*Read timed out'
+        confidence: 95
+      - regex: 'Could not fetch URL.*pypi\.org.*connection error.*Timeout'
+        confidence: 90
+      - regex: 'pip.*Retrying.*Connection.*pypi.*after connection broken.*timeout'
+        confidence: 85
+    solutions:
+      - id: increase-pip-timeout
+        title: Increase pip Timeout
+        priority: 100
+        steps:
+          - "Increase timeout: pip install --timeout 300 <package>"
+          - "Use trusted host: pip install --trusted-host pypi.org --trusted-host files.pythonhosted.org"
+          - "Or use pip config: pip config set global.timeout 300"
+
+  # Build Tool Issues
+  - id: maven-dependency-not-found
+    category: build-tool
+    name: Maven Dependency Not Found
+    description: Maven cannot resolve required dependency
+    severity: HIGH
+    tags: [maven, java, dependency]
+    matchers:
+      - regex: 'Could not find artifact ([^:]+):([^:]+):(?:jar|pom):([^\s]+)\s+in\s+(\S+)'
+        confidence: 95
+        captures: [group_id, artifact_id, version, repository]
+      - regex: 'Failed to collect dependencies at ([^:]+):([^:]+):(?:jar|pom):([^\s]+)'
+        confidence: 90
+        captures: [group_id, artifact_id, version]
+      - regex: 'Failure to find ([^:]+):([^:]+):.*:([^\s]+) in (\S+) was cached'
+        confidence: 85
+        captures: [group_id, artifact_id, version, repository]
+    solutions:
+      - id: check-maven-repository
+        title: Check Maven Repository Configuration
+        priority: 100
+        steps:
+          - "Verify artifact exists: search for ${group_id}:${artifact_id}:${version}"
+          - "Check repository ${repository} is accessible"
+          - "Force update: mvn clean install -U"
+          - "Check settings.xml for repository configuration"
+        examples:
+          settings: |
+            <repositories>
+              <repository>
+                <id>central</id>
+                <url>https://repo.maven.apache.org/maven2</url>
+              </repository>
+            </repositories>
+
+  - id: gradle-dependency-not-found
+    category: build-tool
+    name: Gradle Dependency Not Found
+    description: Gradle cannot resolve required dependency
+    severity: HIGH
+    tags: [gradle, java, dependency]
+    matchers:
+      - regex: "Could not find ([^:]+):([^:]+):([^\\s.]+)\\."
+        confidence: 95
+        captures: [group_id, artifact_id, version]
+      - regex: 'Could not resolve ([^:]+):([^:]+):([^\.]+)\.'
+        confidence: 90
+        captures: [group_id, artifact_id, version]
+    solutions:
+      - id: check-gradle-repository
+        title: Check Gradle Repository Configuration
+        priority: 100
+        steps:
+          - "Verify repositories in build.gradle"
+          - "Try with --refresh-dependencies flag"
+          - "./gradlew clean build --refresh-dependencies"
+        examples:
+          buildgradle: |
+            repositories {
+              mavenCentral()
+              maven { url 'https://repo.maven.apache.org/maven2' }
+            }
+
+  # Git/VCS Issues
+  - id: git-auth-failed
+    category: vcs
+    name: Git Authentication Failed
+    description: Failed to authenticate with Git repository
+    severity: CRITICAL
+    tags: [git, vcs, authentication]
+    matchers:
+      - regex: 'fatal: Authentication failed for.*https://([^/]+)/([^/]+)/([^/\s]+)'
+        confidence: 95
+        captures: [host, org, repo]
+      - regex: 'Permission denied \(publickey\).*\n.*fatal: Could not read from remote repository'
+        confidence: 90
+        multiline: true
+      - regex: 'git@([^:]+): Permission denied \(publickey\)'
+        confidence: 85
+        captures: [host]
+    solutions:
+      - id: configure-git-credentials
+        title: Configure Git Credentials in Jenkins
+        priority: 100
+        steps:
+          - "Add credentials: Jenkins > Credentials > System > Global credentials"
+          - "Use in pipeline: checkout([$class: 'GitSCM', credentialsId: 'git-creds'])"
+          - "For SSH: Ensure SSH key is added and has access to ${org}/${repo}"
+        examples:
+          jenkinsfile: |
+            checkout([
+              $class: 'GitSCM',
+              branches: [[name: '*/main']],
+              userRemoteConfigs: [[
+                url: 'https://${host}/${org}/${repo}.git',
+                credentialsId: 'github-credentials'
+              ]]
+            ])
+
+  - id: git-lfs-not-installed
+    category: vcs
+    name: Git LFS Not Installed
+    description: Git Large File Storage is required but not installed
+    severity: HIGH
+    tags: [git, lfs, vcs]
+    matchers:
+      - regex: 'git-lfs.*command not found'
+        confidence: 95
+      - regex: 'This repository is configured for Git LFS but.*git-lfs.*is not installed'
+        confidence: 90
+      - regex: 'Encountered (\d+) file\(s\) that should have been pointers'
+        confidence: 85
+        captures: [file_count]
+    solutions:
+      - id: install-git-lfs
+        title: Install Git LFS
+        priority: 100
+        steps:
+          - "Install Git LFS: apt-get install git-lfs || brew install git-lfs"
+          - "Initialize: git lfs install"
+          - "Pull LFS files: git lfs pull"
+
+  # Test Failures
+  - id: junit-test-failure
+    category: test
+    name: JUnit Test Failure
+    description: JUnit test execution failed
+    severity: MEDIUM
+    tags: [junit, test, java]
+    matchers:
+      - regex: 'Tests run: \d+, Failures: (\d+), Errors: (\d+), Skipped: \d+'
+        confidence: 95
+        captures: [failures, errors]
+      - regex: 'java\.lang\.AssertionError:([^\n]+)'
+        confidence: 90
+        captures: [assertion_message]
+    solutions:
+      - id: investigate-test-failure
+        title: Investigate Test Failures
+        priority: 100
+        steps:
+          - "Review test report: ${failures} failures, ${errors} errors"
+          - "Check assertion: ${assertion_message}"
+          - "Run tests locally to reproduce"
+          - "Review recent code changes"
+
+  # Performance Issues
+  - id: out-of-memory-java
+    category: performance
+    name: Java Out of Memory Error
+    description: Java heap space exhausted
+    severity: CRITICAL
+    tags: [java, memory, performance]
+    matchers:
+      - regex: 'java\.lang\.OutOfMemoryError: Java heap space'
+        confidence: 100
+      - regex: 'java\.lang\.OutOfMemoryError: GC overhead limit exceeded'
+        confidence: 100
+      - regex: 'Terminating due to java\.lang\.OutOfMemoryError'
+        confidence: 95
+    solutions:
+      - id: increase-heap-size
+        title: Increase Java Heap Size
+        priority: 100
+        steps:
+          - "Increase heap size: -Xmx4g (or higher)"
+          - "For Maven: export MAVEN_OPTS='-Xmx4g'"
+          - "For Gradle: org.gradle.jvmargs=-Xmx4g"
+          - "Monitor memory usage to find optimal value"
+        examples:
+          jenkinsfile: |
+            pipeline {
+              agent any
+              environment {
+                MAVEN_OPTS = '-Xmx4g -XX:+UseG1GC'
+              }
+            }
+
+  # Command Not Found Issues
+  - id: command-not-found-bash
+    category: environment
+    name: Command Not Found
+    description: Command is not available in the current environment or PATH
+    severity: HIGH
+    tags: [bash, shell, environment, path]
+    matchers:
+      - regex: '([^:\s]+): command not found'
+        confidence: 95
+        captures: [command_name]
+      - regex: 'bash: ([^:]+): command not found'
+        confidence: 90
+        captures: [command_name]
+      - regex: 'sh: ([^:]+): not found'
+        confidence: 90
+        captures: [command_name]
+      - regex: '/bin/sh: (\S+): not found'
+        confidence: 95
+        captures: [command_name]
+      - regex: 'line \d+: ([^:]+): command not found'
+        confidence: 85
+        captures: [command_name]
+    solutions:
+      - id: install-missing-command
+        title: Install Missing Command
+        priority: 100
+        steps:
+          - "Install ${command_name}: apt-get install ${command_name} || yum install ${command_name}"
+          - "Or add to PATH if already installed: export PATH=$PATH:/path/to/${command_name}"
+          - "For Docker: Add RUN apt-get update && apt-get install -y ${command_name} to Dockerfile"
+          - "Verify installation: which ${command_name}"
+        examples:
+          dockerfile: |
+            # Add to Dockerfile
+            RUN apt-get update && apt-get install -y ${command_name}
+          jenkins_pipeline: |
+            pipeline {
+              agent any
+              stages {
+                stage('Install Tools') {
+                  steps {
+                    sh 'apt-get update && apt-get install -y ${command_name}'
+                  }
+                }
+              }
+            }
+
+  - id: docker-command-not-found
+    category: docker
+    name: Docker Command Not Found
+    description: Docker CLI is not installed or not in PATH
+    severity: CRITICAL
+    tags: [docker, cli, environment]
+    matchers:
+      - regex: 'docker: command not found'
+        confidence: 100
+      - regex: 'bash: docker: command not found'
+        confidence: 100
+      - regex: 'Cannot connect to the Docker daemon'
+        confidence: 85
+    solutions:
+      - id: install-docker
+        title: Install Docker
+        priority: 100
+        steps:
+          - "Install Docker: curl -fsSL https://get.docker.com -o get-docker.sh && sh get-docker.sh"
+          - "Or use package manager: apt-get install docker.io || yum install docker"
+          - "Start Docker service: systemctl start docker"
+          - "Add user to docker group: usermod -aG docker $USER"
+
+  - id: kubectl-command-not-found
+    category: kubernetes
+    name: kubectl Command Not Found
+    description: Kubernetes CLI (kubectl) is not installed
+    severity: HIGH
+    tags: [kubernetes, kubectl, cli]
+    matchers:
+      - regex: 'kubectl: command not found'
+        confidence: 100
+      - regex: 'bash: kubectl: command not found'
+        confidence: 100
+    solutions:
+      - id: install-kubectl
+        title: Install kubectl
+        priority: 100
+        steps:
+          - "Download kubectl: curl -LO https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+          - "Make executable: chmod +x kubectl"
+          - "Move to PATH: sudo mv kubectl /usr/local/bin/"
+          - "Verify: kubectl version --client"
+
+  - id: git-command-not-found
+    category: vcs
+    name: Git Command Not Found
+    description: Git is not installed or not in PATH
+    severity: HIGH
+    tags: [git, vcs, cli]
+    matchers:
+      - regex: 'git: command not found'
+        confidence: 100
+      - regex: 'bash: git: command not found'
+        confidence: 100
+    solutions:
+      - id: install-git
+        title: Install Git
+        priority: 100
+        steps:
+          - "Install Git: apt-get install git || yum install git"
+          - "Configure Git: git config --global user.name 'Your Name'"
+          - "Configure email: git config --global user.email 'your.email@example.com'"
+          - "Verify: git --version"
+
+  - id: node-npm-command-not-found
+    category: build-tool
+    name: Node.js/NPM Command Not Found
+    description: Node.js or NPM is not installed
+    severity: HIGH
+    tags: [nodejs, npm, javascript]
+    matchers:
+      - regex: 'node: command not found'
+        confidence: 100
+      - regex: 'npm: command not found'
+        confidence: 100
+      - regex: 'bash: node: command not found'
+        confidence: 95
+      - regex: 'bash: npm: command not found'
+        confidence: 95
+    solutions:
+      - id: install-nodejs
+        title: Install Node.js and NPM
+        priority: 100
+        steps:
+          - "Install Node.js: curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash -"
+          - "Install package: apt-get install -y nodejs"
+          - "Or use NodeSource: apt-get install -y nodejs npm"
+          - "Verify: node --version && npm --version"
+
+  - id: python-pip-command-not-found
+    category: build-tool
+    name: Python/Pip Command Not Found
+    description: Python or pip is not installed
+    severity: HIGH
+    tags: [python, pip, package-manager]
+    matchers:
+      - regex: 'python: command not found'
+        confidence: 95
+      - regex: 'python3: command not found'
+        confidence: 95
+      - regex: 'pip: command not found'
+        confidence: 100
+      - regex: 'pip3: command not found'
+        confidence: 100
+    solutions:
+      - id: install-python
+        title: Install Python and Pip
+        priority: 100
+        steps:
+          - "Install Python: apt-get install python3 python3-pip"
+          - "Or use package manager: yum install python3 python3-pip"
+          - "Create symlink if needed: ln -s /usr/bin/python3 /usr/bin/python"
+          - "Verify: python --version && pip --version"
+
+  - id: java-mvn-command-not-found
+    category: build-tool
+    name: Java/Maven Command Not Found
+    description: Java or Maven is not installed
+    severity: HIGH
+    tags: [java, maven, build-tool]
+    matchers:
+      - regex: 'java: command not found'
+        confidence: 95
+      - regex: 'javac: command not found'
+        confidence: 95
+      - regex: 'mvn: command not found'
+        confidence: 100
+      - regex: 'bash: mvn: command not found'
+        confidence: 100
+    solutions:
+      - id: install-java-maven
+        title: Install Java and Maven
+        priority: 100
+        steps:
+          - "Install Java: apt-get install openjdk-11-jdk"
+          - "Install Maven: apt-get install maven"
+          - "Set JAVA_HOME: export JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64"
+          - "Verify: java -version && mvn -version"
+
+  - id: generic-tool-not-found
+    category: environment
+    name: Build Tool Not Found
+    description: Common build tools are missing from the environment
+    severity: MEDIUM
+    tags: [tools, environment, build]
+    matchers:
+      - regex: '(make|gcc|g\+\+|cmake|gradle|yarn|composer): command not found'
+        confidence: 90
+        captures: [tool_name]
+      - regex: 'bash: (make|gcc|g\+\+|cmake|gradle|yarn|composer): command not found'
+        confidence: 95
+        captures: [tool_name]
+    solutions:
+      - id: install-build-tools
+        title: Install Build Tools
+        priority: 90
+        steps:
+          - "Install ${tool_name}: apt-get install ${tool_name}"
+          - "Or install build essentials: apt-get install build-essential"
+          - "For development tools: apt-get install build-essential cmake"
+          - "Verify installation: which ${tool_name}"
