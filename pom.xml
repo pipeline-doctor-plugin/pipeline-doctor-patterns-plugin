@@ -18,6 +18,14 @@
 
     <name>Pipeline Doctor Patterns Plugin</name>
     <description>Pattern-based diagnostic provider for Pipeline Doctor - analyzes build logs using predefined patterns</description>
+    
+    <licenses>
+        <license>
+            <name>MIT License</name>
+            <url>https://opensource.org/licenses/MIT</url>
+            <distribution>repo</distribution>
+        </license>
+    </licenses>
 
     <properties>
         <jenkins.version>2.440.3</jenkins.version>
